@@ -1,0 +1,311 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Restaurant</title>
+    <style>
+        * { margin: 0; padding: 0; box-sizing: border-box; }
+        body { font-family: system-ui, -apple-system, sans-serif; background: #f7f7f7; padding: 20px; }
+        .container { max-width: 800px; margin: 0 auto; }
+        
+        /* Menu mode */
+        .menu-mode { display: block; }
+        .order-mode { display: none; }
+        
+        .header { text-align: center; padding: 40px 20px; background: linear-gradient(135deg, #667eea, #764ba2); color: white; border-radius: 20px; margin-bottom: 30px; }
+        .menu-grid { display: grid; gap: 16px; }
+        .card { background: white; border-radius: 12px; padding: 16px; display: flex; justify-content: space-between; align-items: center; box-shadow: 0 2px 8px rgba(0,0,0,0.1); }
+        .card h3 { margin-bottom: 5px; }
+        .price { color: #667eea; font-weight: bold; font-size: 18px; }
+        .btn { background: #667eea; color: white; border: none; padding: 8px 20px; border-radius: 25px; cursor: pointer; }
+        .btn-danger { background: #e53e3e; }
+        .btn-success { background: #48bb78; }
+        
+        /* Cart sidebar */
+        .cart-btn { position: fixed; bottom: 20px; right: 20px; background: #667eea; color: white; width: 60px; height: 60px; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-size: 24px; cursor: pointer; box-shadow: 0 4px 12px rgba(0,0,0,0.2); z-index: 100; }
+        .cart-sidebar { position: fixed; top: 0; right: -350px; width: 350px; height: 100%; background: white; box-shadow: -2px 0 12px rgba(0,0,0,0.2); transition: right 0.3s; z-index: 200; display: flex; flex-direction: column; }
+        .cart-sidebar.open { right: 0; }
+        .cart-header { padding: 20px; background: #2d3748; color: white; display: flex; justify-content: space-between; }
+        .cart-items { flex: 1; padding: 20px; overflow-y: auto; }
+        .cart-item { display: flex; justify-content: space-between; padding: 10px 0; border-bottom: 1px solid #e2e8f0; }
+        .cart-footer { padding: 20px; border-top: 2px solid #e2e8f0; }
+        .overlay { display: none; position: fixed; top: 0; left: 0; right: 0; bottom: 0; background: rgba(0,0,0,0.5); z-index: 150; }
+        .overlay.show { display: block; }
+        
+        .table-modal { position: fixed; top: 50%; left: 50%; transform: translate(-50%, -50%); background: white; padding: 30px; border-radius: 16px; z-index: 300; display: none; width: 90%; max-width: 300px; }
+        .table-modal.show { display: block; }
+        .table-modal input { width: 100%; padding: 12px; margin: 15px 0; border: 1px solid #ccc; border-radius: 8px; }
+        
+        .exit-btn { position: fixed; top: 20px; right: 20px; background: #e53e3e; color: white; border: none; padding: 10px 20px; border-radius: 25px; cursor: pointer; z-index: 100; }
+    </style>
+</head>
+<body>
+
+<div class="container">
+    <!-- Menu Mode -->
+    <div id="menuMode" class="menu-mode">
+        <div class="header">
+            <h1>🍽️ Our Menu</h1>
+            <p>Delicious food made fresh</p>
+        </div>
+        <div id="menuList" class="menu-grid"></div>
+    </div>
+    
+    <!-- Order Mode -->
+    <div id="orderMode" class="order-mode">
+        <button class="exit-btn" onclick="exitOrderMode()">Exit Menu</button>
+        <div class="header">
+            <h1>🍕 Live Ordering</h1>
+            <p>Add items to your cart</p>
+        </div>
+        <div id="orderMenuList" class="menu-grid"></div>
+    </div>
+</div>
+
+<!-- Cart Button (Order mode only) -->
+<div id="cartBtn" class="cart-btn" onclick="openCart()">🛒 <span id="cartCount">0</span></div>
+
+<!-- Cart Sidebar -->
+<div id="cartSidebar" class="cart-sidebar">
+    <div class="cart-header">
+        <h3>Your Order</h3>
+        <button onclick="closeCart()" style="background: none; border: none; color: white; font-size: 24px; cursor: pointer;">&times;</button>
+    </div>
+    <div id="cartItemsList" class="cart-items">Cart empty</div>
+    <div class="cart-footer">
+        <div style="font-size: 20px; font-weight: bold; margin-bottom: 15px;">Total: $<span id="totalAmount">0</span></div>
+        <button class="btn btn-success" onclick="showTableModal()" style="width: 100%; padding: 12px;">Place Order</button>
+    </div>
+</div>
+
+<div id="overlay" class="overlay" onclick="closeCart()"></div>
+
+<div id="tableModal" class="table-modal">
+    <h3>Table Number</h3>
+    <input type="number" id="tableNum" placeholder="Enter table number">
+    <button class="btn btn-success" onclick="submitOrder()" style="width: 100%; margin-bottom: 10px;">Confirm</button>
+    <button class="btn" onclick="closeTableModal()" style="width: 100%; background: #ccc;">Cancel</button>
+</div>
+
+<script>
+
+const tableFromQR = urlParams.get('table');  // NEW: get table from QR
+
+// Store table number if coming from QR
+if (tableFromQR) {
+    sessionStorage.setItem('table_number', tableFromQR);
+}
+
+// When submitting order, use stored table number
+async function submitOrder() {
+    // Get table from sessionStorage (set by QR)
+    const tableNum = sessionStorage.getItem('table_number');
+    
+    if (!tableNum) {
+        // Fallback: ask user (backward compatibility)
+        const manualTable = prompt('Enter table number:');
+        if (!manualTable) return;
+        tableNum = manualTable;
+    }
+    
+    const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+    const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
+    
+    const res = await fetch('/api/orders', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ 
+            table_number: parseInt(tableNum), 
+            items, 
+            total, 
+            token: qrToken 
+        })
+    });
+    
+    const data = await res.json();
+    
+    if (res.ok) {
+        alert(`Order #${data.order_id} placed! Food coming to Table ${tableNum}`);
+        cart = [];
+        updateCartUI();
+        closeCart();
+    } else {
+        alert(data.error);
+    }
+}
+    let menu = [];
+    let cart = [];
+    let qrToken = null;
+    let isOrderMode = false;
+    
+    // Get URL parameters
+    const urlParams = new URLSearchParams(window.location.search);
+    const modeParam = urlParams.get('mode');
+    const tokenParam = urlParams.get('token');
+    
+    // Check if we should be in order mode
+    async function checkMode() {
+        if (modeParam === 'order' && tokenParam) {
+            qrToken = tokenParam;
+            const response = await fetch(`/api/verify?token=${qrToken}`);
+            const data = await response.json();
+            
+            if (data.orderMode) {
+                enableOrderMode();
+            } else {
+                enableMenuMode();
+            }
+        } else {
+            enableMenuMode();
+        }
+    }
+    
+    function enableMenuMode() {
+        isOrderMode = false;
+        document.getElementById('menuMode').style.display = 'block';
+        document.getElementById('orderMode').style.display = 'none';
+        document.getElementById('cartBtn').style.display = 'none';
+        loadMenu(false);
+    }
+    
+    function enableOrderMode() {
+        isOrderMode = true;
+        document.getElementById('menuMode').style.display = 'none';
+        document.getElementById('orderMode').style.display = 'block';
+        document.getElementById('cartBtn').style.display = 'flex';
+        loadMenu(true);
+        updateCartUI();
+    }
+    
+    async function loadMenu(withButtons) {
+        const res = await fetch('/api/menu');
+        menu = await res.json();
+        
+        const container = withButtons ? 'orderMenuList' : 'menuList';
+        const html = menu.map(item => `
+            <div class="card">
+                <div>
+                    <h3>${item.name}</h3>
+                    <p style="color: #666; font-size: 14px;">${item.desc}</p>
+                    <div class="price">$${item.price}</div>
+                </div>
+                ${withButtons ? `<button class="btn" onclick="addToCart(${item.id})">Add</button>` : ''}
+            </div>
+        `).join('');
+        
+        document.getElementById(container).innerHTML = html;
+    }
+    
+    function addToCart(id) {
+        const item = menu.find(i => i.id === id);
+        const existing = cart.find(i => i.id === id);
+        
+        if (existing) {
+            existing.qty++;
+        } else {
+            cart.push({ ...item, qty: 1 });
+        }
+        updateCartUI();
+    }
+    
+    function updateCartUI() {
+        const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+        const count = cart.reduce((sum, i) => sum + i.qty, 0);
+        
+        document.getElementById('cartCount').innerText = count;
+        document.getElementById('totalAmount').innerText = total.toFixed(2);
+        
+        if (cart.length === 0) {
+            document.getElementById('cartItemsList').innerHTML = '<p style="color: #999;">Cart is empty</p>';
+            return;
+        }
+        
+        document.getElementById('cartItemsList').innerHTML = cart.map(item => `
+            <div class="cart-item">
+                <div>
+                    <strong>${item.name}</strong><br>
+                    $${item.price} x ${item.qty}
+                </div>
+                <div>
+                    <button onclick="updateQty(${item.id}, -1)" style="background: #e2e8f0; border: none; width: 28px; border-radius: 50%; cursor: pointer;">-</button>
+                    <span style="margin: 0 10px;">${item.qty}</span>
+                    <button onclick="updateQty(${item.id}, 1)" style="background: #e2e8f0; border: none; width: 28px; border-radius: 50%; cursor: pointer;">+</button>
+                </div>
+            </div>
+        `).join('');
+    }
+    
+    function updateQty(id, delta) {
+        const item = cart.find(i => i.id === id);
+        if (item) {
+            item.qty += delta;
+            if (item.qty <= 0) {
+                cart = cart.filter(i => i.id !== id);
+            }
+            updateCartUI();
+        }
+    }
+    
+    function openCart() {
+        document.getElementById('cartSidebar').classList.add('open');
+        document.getElementById('overlay').classList.add('show');
+    }
+    
+    function closeCart() {
+        document.getElementById('cartSidebar').classList.remove('open');
+        document.getElementById('overlay').classList.remove('show');
+    }
+    
+    function showTableModal() {
+        if (cart.length === 0) {
+            alert('Cart is empty');
+            return;
+        }
+        document.getElementById('tableModal').classList.add('show');
+        document.getElementById('overlay').classList.add('show');
+    }
+    
+    function closeTableModal() {
+        document.getElementById('tableModal').classList.remove('show');
+        document.getElementById('overlay').classList.remove('show');
+    }
+    
+    async function submitOrder() {
+        const tableNum = document.getElementById('tableNum').value;
+        if (!tableNum) {
+            alert('Enter table number');
+            return;
+        }
+        
+        const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+        const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
+        
+        const res = await fetch('/api/orders', {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ table_number: tableNum, items, total, token: qrToken })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            alert(`Order #${data.order_id} placed! Food coming to table ${tableNum}`);
+            cart = [];
+            updateCartUI();
+            closeTableModal();
+            closeCart();
+            document.getElementById('tableNum').value = '';
+        } else {
+            alert(data.error);
+        }
+    }
+    
+    function exitOrderMode() {
+        window.location.href = '/';
+    }
+    
+    checkMode();
+</script>
+</body>
+</html>
