@@ -111,28 +111,71 @@
     }
     
     // Check if we should be in order mode
-    async function checkMode() {
-        console.log('Checking mode:', { modeParam, tokenParam, tableFromQR });
-        
-        if (modeParam === 'order' && tokenParam) {
-            qrToken = tokenParam;
-            try {
-                const response = await fetch(`/api/verify?token=${qrToken}`);
-                const data = await response.json();
-                
-                if (data.orderMode) {
-                    enableOrderMode();
-                } else {
-                    enableMenuMode();
-                }
-            } catch (err) {
-                console.error('Verification error:', err);
+   async function loadMenu(withButtons) {
+    try {
+        const res = await fetch(`${API_BASE}/api/menu`);
+        menu = await res.json();
+        // ... rest of function
+    } catch (err) {
+        console.error('Error loading menu:', err);
+        document.getElementById('menuList').innerHTML = '<p>Error loading menu. Please refresh.</p>';
+    }
+}
+
+async function checkMode() {
+    console.log('Checking mode:', { modeParam, tokenParam, tableFromQR });
+    
+    if (modeParam === 'order' && tokenParam) {
+        qrToken = tokenParam;
+        try {
+            const response = await fetch(`${API_BASE}/api/verify?token=${qrToken}`);
+            const data = await response.json();
+            
+            if (data.orderMode) {
+                enableOrderMode();
+            } else {
                 enableMenuMode();
             }
-        } else {
+        } catch (err) {
+            console.error('Verification error:', err);
             enableMenuMode();
         }
+    } else {
+        enableMenuMode();
     }
+}
+
+async function submitOrderWithTable(tableNum) {
+    const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
+    const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
+    
+    try {
+        const res = await fetch(`${API_BASE}/api/orders`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({ 
+                table_number: parseInt(tableNum), 
+                items, 
+                total, 
+                token: qrToken 
+            })
+        });
+        
+        const data = await res.json();
+        
+        if (res.ok) {
+            alert(`Order #${data.order_id} placed! Food coming to Table ${tableNum}`);
+            cart = [];
+            updateCartUI();
+            closeCart();
+        } else {
+            alert(data.error || 'Error placing order');
+        }
+    } catch (err) {
+        console.error('Order error:', err);
+        alert('Network error. Please try again.');
+    }
+}
     
     function enableMenuMode() {
         isOrderMode = false;
@@ -156,29 +199,7 @@
         }
     }
     
-    async function loadMenu(withButtons) {
-        try {
-            const res = await fetch('/api/menu');
-            menu = await res.json();
-            
-            const container = withButtons ? 'orderMenuList' : 'menuList';
-            const html = menu.map(item => `
-                <div class="card">
-                    <div>
-                        <h3>${item.name}</h3>
-                        <p style="color: #666; font-size: 14px;">${item.desc}</p>
-                        <div class="price">$${item.price}</div>
-                    </div>
-                    ${withButtons ? `<button class="btn" onclick="addToCart(${item.id})">Add</button>` : ''}
-                </div>
-            `).join('');
-            
-            document.getElementById(container).innerHTML = html;
-        } catch (err) {
-            console.error('Error loading menu:', err);
-            document.getElementById('menuList').innerHTML = '<p>Error loading menu. Please refresh.</p>';
-        }
-    }
+   
     
     function addToCart(id) {
         const item = menu.find(i => i.id === id);
@@ -271,37 +292,7 @@
         document.getElementById('tableNum').value = '';
     }
     
-    async function submitOrderWithTable(tableNum) {
-        const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-        const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
-        
-        try {
-            const res = await fetch('/api/orders', {
-                method: 'POST',
-                headers: { 'Content-Type': 'application/json' },
-                body: JSON.stringify({ 
-                    table_number: parseInt(tableNum), 
-                    items, 
-                    total, 
-                    token: qrToken 
-                })
-            });
-            
-            const data = await res.json();
-            
-            if (res.ok) {
-                alert(`Order #${data.order_id} placed! Food coming to Table ${tableNum}`);
-                cart = [];
-                updateCartUI();
-                closeCart();
-            } else {
-                alert(data.error || 'Error placing order');
-            }
-        } catch (err) {
-            console.error('Order error:', err);
-            alert('Network error. Please try again.');
-        }
-    }
+   
     
     function exitOrderMode() {
         window.location.href = '/';
