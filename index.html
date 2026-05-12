@@ -89,71 +89,44 @@
 </div>
 
 <script>
-
-const tableFromQR = urlParams.get('table');  // NEW: get table from QR
-
-// Store table number if coming from QR
-if (tableFromQR) {
-    sessionStorage.setItem('table_number', tableFromQR);
-}
-
-// When submitting order, use stored table number
-async function submitOrder() {
-    // Get table from sessionStorage (set by QR)
-    const tableNum = sessionStorage.getItem('table_number');
-    
-    if (!tableNum) {
-        // Fallback: ask user (backward compatibility)
-        const manualTable = prompt('Enter table number:');
-        if (!manualTable) return;
-        tableNum = manualTable;
-    }
-    
-    const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
-    const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
-    
-    const res = await fetch('/api/orders', {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ 
-            table_number: parseInt(tableNum), 
-            items, 
-            total, 
-            token: qrToken 
-        })
-    });
-    
-    const data = await res.json();
-    
-    if (res.ok) {
-        alert(`Order #${data.order_id} placed! Food coming to Table ${tableNum}`);
-        cart = [];
-        updateCartUI();
-        closeCart();
-    } else {
-        alert(data.error);
-    }
-}
     let menu = [];
     let cart = [];
     let qrToken = null;
     let isOrderMode = false;
+    let storedTableNumber = null;
     
     // Get URL parameters
     const urlParams = new URLSearchParams(window.location.search);
     const modeParam = urlParams.get('mode');
     const tokenParam = urlParams.get('token');
+    const tableFromQR = urlParams.get('table');
+    
+    // Store table number if coming from QR
+    if (tableFromQR) {
+        storedTableNumber = tableFromQR;
+        sessionStorage.setItem('table_number', tableFromQR);
+    } else {
+        // Try to get from sessionStorage
+        storedTableNumber = sessionStorage.getItem('table_number');
+    }
     
     // Check if we should be in order mode
     async function checkMode() {
+        console.log('Checking mode:', { modeParam, tokenParam, tableFromQR });
+        
         if (modeParam === 'order' && tokenParam) {
             qrToken = tokenParam;
-            const response = await fetch(`/api/verify?token=${qrToken}`);
-            const data = await response.json();
-            
-            if (data.orderMode) {
-                enableOrderMode();
-            } else {
+            try {
+                const response = await fetch(`/api/verify?token=${qrToken}`);
+                const data = await response.json();
+                
+                if (data.orderMode) {
+                    enableOrderMode();
+                } else {
+                    enableMenuMode();
+                }
+            } catch (err) {
+                console.error('Verification error:', err);
                 enableMenuMode();
             }
         } else {
@@ -176,25 +149,35 @@ async function submitOrder() {
         document.getElementById('cartBtn').style.display = 'flex';
         loadMenu(true);
         updateCartUI();
+        
+        // Show table number if from QR
+        if (storedTableNumber) {
+            console.log(`Ordering for Table ${storedTableNumber}`);
+        }
     }
     
     async function loadMenu(withButtons) {
-        const res = await fetch('/api/menu');
-        menu = await res.json();
-        
-        const container = withButtons ? 'orderMenuList' : 'menuList';
-        const html = menu.map(item => `
-            <div class="card">
-                <div>
-                    <h3>${item.name}</h3>
-                    <p style="color: #666; font-size: 14px;">${item.desc}</p>
-                    <div class="price">$${item.price}</div>
+        try {
+            const res = await fetch('/api/menu');
+            menu = await res.json();
+            
+            const container = withButtons ? 'orderMenuList' : 'menuList';
+            const html = menu.map(item => `
+                <div class="card">
+                    <div>
+                        <h3>${item.name}</h3>
+                        <p style="color: #666; font-size: 14px;">${item.desc}</p>
+                        <div class="price">$${item.price}</div>
+                    </div>
+                    ${withButtons ? `<button class="btn" onclick="addToCart(${item.id})">Add</button>` : ''}
                 </div>
-                ${withButtons ? `<button class="btn" onclick="addToCart(${item.id})">Add</button>` : ''}
-            </div>
-        `).join('');
-        
-        document.getElementById(container).innerHTML = html;
+            `).join('');
+            
+            document.getElementById(container).innerHTML = html;
+        } catch (err) {
+            console.error('Error loading menu:', err);
+            document.getElementById('menuList').innerHTML = '<p>Error loading menu. Please refresh.</p>';
+        }
     }
     
     function addToCart(id) {
@@ -262,8 +245,14 @@ async function submitOrder() {
             alert('Cart is empty');
             return;
         }
-        document.getElementById('tableModal').classList.add('show');
-        document.getElementById('overlay').classList.add('show');
+        
+        // If we already have table from QR, skip modal
+        if (storedTableNumber) {
+            submitOrderWithTable(storedTableNumber);
+        } else {
+            document.getElementById('tableModal').classList.add('show');
+            document.getElementById('overlay').classList.add('show');
+        }
     }
     
     function closeTableModal() {
@@ -277,27 +266,40 @@ async function submitOrder() {
             alert('Enter table number');
             return;
         }
-        
+        await submitOrderWithTable(tableNum);
+        closeTableModal();
+        document.getElementById('tableNum').value = '';
+    }
+    
+    async function submitOrderWithTable(tableNum) {
         const total = cart.reduce((sum, i) => sum + (i.price * i.qty), 0);
         const items = cart.map(i => ({ id: i.id, name: i.name, qty: i.qty, price: i.price }));
         
-        const res = await fetch('/api/orders', {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({ table_number: tableNum, items, total, token: qrToken })
-        });
-        
-        const data = await res.json();
-        
-        if (res.ok) {
-            alert(`Order #${data.order_id} placed! Food coming to table ${tableNum}`);
-            cart = [];
-            updateCartUI();
-            closeTableModal();
-            closeCart();
-            document.getElementById('tableNum').value = '';
-        } else {
-            alert(data.error);
+        try {
+            const res = await fetch('/api/orders', {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({ 
+                    table_number: parseInt(tableNum), 
+                    items, 
+                    total, 
+                    token: qrToken 
+                })
+            });
+            
+            const data = await res.json();
+            
+            if (res.ok) {
+                alert(`Order #${data.order_id} placed! Food coming to Table ${tableNum}`);
+                cart = [];
+                updateCartUI();
+                closeCart();
+            } else {
+                alert(data.error || 'Error placing order');
+            }
+        } catch (err) {
+            console.error('Order error:', err);
+            alert('Network error. Please try again.');
         }
     }
     
@@ -305,6 +307,7 @@ async function submitOrder() {
         window.location.href = '/';
     }
     
+    // Start the app
     checkMode();
 </script>
 </body>
