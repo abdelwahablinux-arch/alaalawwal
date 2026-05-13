@@ -1,0 +1,141 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Loading Ordering System...</title>
+    <style>
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+        
+        body {
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            justify-content: center;
+            align-items: center;
+            height: 100vh;
+            margin: 0;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+        }
+        
+        .loader-container {
+            text-align: center;
+            padding: 20px;
+        }
+        
+        .spinner {
+            width: 60px;
+            height: 60px;
+            border: 4px solid rgba(255,255,255,0.3);
+            border-top-color: white;
+            border-radius: 50%;
+            animation: spin 1s linear infinite;
+            margin: 0 auto 20px;
+        }
+        
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+        
+        h2 {
+            font-size: 24px;
+            margin-bottom: 10px;
+            font-weight: 500;
+        }
+        
+        .table-number {
+            font-size: 20px;
+            opacity: 0.9;
+            margin-top: 10px;
+        }
+        
+        .error-container {
+            background: rgba(0,0,0,0.8);
+            padding: 30px;
+            border-radius: 16px;
+            max-width: 400px;
+            margin-top: 20px;
+        }
+        
+        .error-container p {
+            margin-bottom: 20px;
+            font-size: 16px;
+        }
+        
+        button {
+            background: white;
+            color: #667eea;
+            border: none;
+            padding: 12px 24px;
+            border-radius: 8px;
+            font-size: 16px;
+            font-weight: 600;
+            cursor: pointer;
+            transition: transform 0.2s;
+        }
+        
+        button:hover {
+            transform: scale(1.05);
+        }
+        
+        .hidden {
+            display: none;
+        }
+    </style>
+</head>
+<body>
+    <div class="loader-container">
+        <div class="spinner" id="spinner"></div>
+        <h2>Loading ordering system...</h2>
+        <div class="table-number" id="tableDisplay"></div>
+        
+        <div id="errorContainer" class="error-container hidden">
+            <p>❌ Failed to start ordering session</p>
+            <p style="font-size: 14px; opacity: 0.8;">Please make sure you have an internet connection and try again.</p>
+            <button onclick="window.location.href='/'">Back to Menu</button>
+        </div>
+    </div>
+
+    <script>
+        // Get table number from URL
+        const urlParams = new URLSearchParams(window.location.search);
+        const tableNumber = urlParams.get('table') || '1';
+        
+        // Display table number
+        document.getElementById('tableDisplay').innerHTML = `Table ${tableNumber}`;
+        
+        async function getTokenAndRedirect() {
+            try {
+                console.log('Requesting token for table:', tableNumber);
+                
+                // Call backend to get a token
+                const response = await fetch(`/api/generate-token?table=${tableNumber}`);
+                const data = await response.json();
+                
+                console.log('Response:', data);
+                
+                if (data.success && data.token) {
+                    // Redirect to main page with token
+                    const redirectUrl = `/?mode=order&token=${data.token}&table=${tableNumber}`;
+                    console.log('Redirecting to:', redirectUrl);
+                    window.location.href = redirectUrl;
+                } else {
+                    throw new Error(data.error || 'No token received');
+                }
+            } catch (error) {
+                console.error('Error:', error);
+                // Hide spinner and show error
+                document.getElementById('spinner').style.display = 'none';
+                document.getElementById('errorContainer').classList.remove('hidden');
+            }
+        }
+        
+        // Start the process after a short delay (for better UX)
+        setTimeout(getTokenAndRedirect, 500);
+    </script>
+</body>
+</html>
