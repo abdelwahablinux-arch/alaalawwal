@@ -101,6 +101,10 @@
     </div>
 
     <script>
+        // ============ CONFIGURATION ============
+        // 🔧 CHANGE THIS TO YOUR TUNNEL URL (LocalTunnel, Ngrok, or Cloudflare)
+        const BASE = 'https://tricky-crabs-grin.loca.lt/';  // ← Replace with your tunnel URL
+        
         // Get table number from URL
         const urlParams = new URLSearchParams(window.location.search);
         const tableNumber = urlParams.get('table') || '1';
@@ -113,13 +117,13 @@
                 console.log('Requesting token for table:', tableNumber);
                 
                 // Call backend to get a token
-                const response = await fetch(`/api/generate-token?table=${tableNumber}`);
+                const response = await fetch(`${BASE}/api/generate-token?table=${tableNumber}`);
                 const data = await response.json();
                 
                 console.log('Response:', data);
                 
                 if (data.success && data.token) {
-                    // Redirect to main page with token
+                    // Redirect to main page with token (same origin, no BASE needed for redirect)
                     const redirectUrl = `/?mode=order&token=${data.token}&table=${tableNumber}`;
                     console.log('Redirecting to:', redirectUrl);
                     window.location.href = redirectUrl;
